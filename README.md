@@ -9,6 +9,45 @@
 
 ---
 
+## 为什么需要这个插件
+
+**ClassIsland 2.x 本身不提供 Excel 导入导出。**
+
+1.x 时代（1.6.3.0 起，见 [Issue #410](https://github.com/ClassIsland/ClassIsland/issues/410)）
+课表编辑器支持在 Excel 里来回倒腾，但 2.x 重构后这个能力没有保留下来。
+目前 2.x 原生的「数据文件导入导出」走的是 `.json`——
+
+```json
+{"TimeLayouts":{"96fc89dc-739c-4321-a903-97947ad4760f":{"Name":"新时间表",
+"Layouts":[{"StartTime":"23:40:00","EndTime":"23:41:00",...}]}}}
+```
+
+这种格式适合**整包备份 / 迁移到另一台机器**，但**不适合人编辑**：教师排课时想批量改某几节课、
+或者直接拿年级主任发来的 `.xlsx` 课表，用 json 是没法办的。
+
+社区里一直有人提这个需求：
+
+- [Issue #1898 · 2.1重新支持Excel导入导出课程表](https://github.com/ClassIsland/ClassIsland/issues/1898)
+  （2026-07 提出，至今仍为 open）
+
+> 「有些学校课表变动频繁，而年级主任提供的电子课表是 xlsx 文件，每次换课表很不方便」
+
+本插件就是把这块能力补回来：**在 Excel 里编辑，改完导回 ClassIsland**。
+
+### 和原生导入导出的区别
+
+| | 原生（`.json`） | 本插件（`.xlsx`） |
+| --- | --- | --- |
+| 用途 | 整包备份、迁移到别的 ClassIsland 实例 | 人工编辑课表内容 |
+| 能否用 Excel 打开改 | ❌ | ✅ |
+| 批量改、筛选、排序、公式 | ❌ | ✅ |
+| 处理年级主任发来的 xlsx | ❌ | ✅（改好表头即可导入） |
+| 含全局配置 | ✅ | ✅ |
+
+两者不冲突，可以并存。
+
+---
+
 ## 功能
 
 ### 导出
@@ -118,7 +157,7 @@ json:{"SubjectId":"9875b24c-470d-4195-8a6a-73925ea4808b","Index":null,"IsEnabled
 ## 从源码编译
 
 ```powershell
-git clone https://github.com/你的用户名/ClassIsland.ExcelTool.git
+git clone https://github.com/pioneer66679/classisland.exceltool.git
 cd ClassIsland.ExcelTool
 dotnet build -c Release
 ```
