@@ -31,6 +31,7 @@ public class ExcelToolSettingsPage : SettingsPageBase
 
     private readonly TextBox _exportPathBox = new() { Watermark = "导出到哪个 .xlsx 文件" };
     private readonly TextBox _importPathBox = new() { Watermark = "要导入的 .xlsx 文件路径" };
+    private readonly TextBox _csesPathBox = new() { Watermark = "要导入的 CSES .yml 文件路径" };
     private readonly TextBox _backupBox = new() { Watermark = "留空则用插件配置目录\\Backups" };
     private readonly CheckBox _autoBackup = new() { Content = "导入前自动备份档案（建议开启）" };
     private readonly CheckBox _styleHeader = new() { Content = "导出时加表头样式并冻结首行" };
@@ -116,7 +117,19 @@ public class ExcelToolSettingsPage : SettingsPageBase
         panel.Children.Add(_styleHeader);
         panel.Children.Add(_showIds);
 
-        panel.Children.Add(Header("导入"));
+        // ---------- CSES 导入 ----------
+        panel.Children.Add(Header("导入 CSES 课表（.yml / .yaml）"));
+        panel.Children.Add(Hint(
+            "CSES 是社区通用的课程表交换格式（ClassIsland 官方也支持）。" +
+            "选一个 .yml 文件，把里面的科目与课表导入进来。"));
+        panel.Children.Add(_csesPathBox);
+        var csesRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        csesRow.Children.Add(MakeButton("📥 预览 CSES", OnPreviewCses));
+        csesRow.Children.Add(MakeButton("✅ 导入 CSES", OnApplyCses));
+        csesRow.Children.Add(MakeButton("仅选择文件…", OnPickCses));
+        panel.Children.Add(csesRow);
+
+        panel.Children.Add(Header("导入 Excel 课表"));
         panel.Children.Add(Hint("点「预览差异」或「应用导入」都会先弹出文件选择框，路径可留空。"));
         panel.Children.Add(_importPathBox);
         var importRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
@@ -636,6 +649,139 @@ public class ExcelToolSettingsPage : SettingsPageBase
         {
             _logger?.LogError(ex, "应用导入失败");
             Log("✗ 导入失败：" + ex.Message);
+        }
+    }
+
+    // ---------------- CSES 导入 ----------------
+
+    /// <summary>确保有一个可用的 CSES 文件路径：没填就弹文件选择框。</summary>
+    private async Task<string> EnsureCsesPath()
+    {
+        if (!string.IsNullOrWhiteSpace(_csesPathBox.Text) && File.Exists(_csesPathBox.Text))
+            return _csesPathBox.Text!;
+
+        try
+        {
+            var top = TopLevel.GetTopLevel(this);
+            if (top is null)
+            {
+                Log("⚠ 无法打开文件对话框（拿不到窗口）。可以在输入框里手写完整路径。");
+                return _csesPathBox.Text ?? "";
+            }
+
+            var files = await top.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+            {
+                Title = "选择 CSES 课表文件",
+                AllowMultiple = false,
+                FileTypeFilter = new[]
+                {
+                    new FilePickerFileType("CSES 课表")
+                    {
+                        Patterns = new[] { "*.yml", "*.yaml" }
+                    }
+                }
+            });
+
+            if (files is null || files.Count == 0) return "";
+
+            var p = ToLocalPath(files[0]);
+            if (string.IsNullOrWhiteSpace(p)) { Log("⚠ 拿不到本地路径。"); return ""; }
+
+            _csesPathBox.Text = p;
+            Log("已选择 CSES 文件：" + p);
+            return p;
+        }
+        catch (Exception ex)
+        {
+            Log("✗ 选择 CSES 文件失败：" + ex.Message);
+            return "";
+        }
+    }
+
+    private async void OnPickCses(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        var p = await EnsureCsesPath();
+        if (!string.IsNullOrWhiteSpace(p) && !File.Exists(p))
+            Log("⚠ 该路径当前不存在，导入前请确认文件还在。");
+    }
+
+    private async void OnPreviewCses(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        try
+        {
+            var path = await EnsureCsesPath();
+            if (string.IsNullOrWhiteSpace(path)) { Log("已取消。"); return; }
+            if (!File.Exists(path)) { Log("✗ 文件不存在：" + path); return; }
+
+            var curProfile = _profileStore.LoadProfile();
+            var warnings = new List<string>();
+            var parsed = CsesImporter.Parse(File.ReadAllText(path), curProfile as JsonObject ?? new JsonObject(), warnings);
+
+            var subjects = (parsed["Subjects"] as JsonObject)?.Count ?? 0;
+            var layouts = (parsed["TimeLayouts"] as JsonObject)?.Count ?? 0;
+            var plans = (parsed["ClassPlans"] as JsonObject)?.Count ?? 0;
+
+            Log("── CSES 预览 ──");
+            Log($"  科目 {subjects} 个，时间表 {layouts} 个，课表 {plans} 个");
+
+            if (parsed["ClassPlans"] is JsonObject po)
+                foreach (var kv in po)
+                {
+                    var p = kv.Value as JsonObject;
+                    var n = (p?["Classes"] as JsonArray)?.Count ?? 0;
+                    var rule = p?["TimeRule"]?.GetValue<string>() ?? "";
+                    Log($"    · {p?["Name"]}  {n} 节  规则 {rule}");
+                }
+
+            foreach (var w in warnings) Log("  ⚠ " + w);
+
+            if (warnings.Count == 0) Log("  ✓ 解析无警告");
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "CSES 预览失败");
+            Log("✗ CSES 预览失败：" + ex.Message);
+        }
+    }
+
+    private async void OnApplyCses(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        try
+        {
+            CollectConfig();
+
+            var path = await EnsureCsesPath();
+            if (string.IsNullOrWhiteSpace(path)) { Log("已取消。"); return; }
+            if (!File.Exists(path)) { Log("✗ 文件不存在：" + path); return; }
+
+            var profilePath = _profileStore.GetCurrentProfilePath();
+            var curProfile = _profileStore.LoadProfile();
+            var curSettings = _profileStore.LoadSettings();
+
+            var warnings = new List<string>();
+            var parsed = CsesImporter.Parse(File.ReadAllText(path), curProfile as JsonObject ?? new JsonObject(), warnings);
+
+            // CSES 只描述科目与课表，不动全局配置；策略固定用「合并」——
+            // 覆盖模式会按 Excel 表里的内容删东西，而 CSES 没有「删除」的语义。
+            var (finalProfile, finalSettings) =
+                ImportEngine.ApplyStrategy(curProfile, curSettings, parsed, new JsonObject(), ImportStrategy.Merge);
+
+            var backupFolder = _config.AutoBackupBeforeImport ? EffectiveBackupFolder() : null;
+            if (backupFolder is not null) Log($"  备份目录：{backupFolder}");
+
+            _profileStore.SaveProfile(finalProfile, profilePath, backupFolder);
+
+            Log("✓ CSES 导入完成（策略：合并）");
+            foreach (var w in warnings) Log("  ⚠ " + w);
+            Log("  提示：回到 ClassIsland 主界面后重新打开设置或重启应用，即可看到新档案。");
+
+            RefreshStatus();
+            SaveConfig();
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "CSES 导入失败");
+            Log("✗ CSES 导入失败：" + ex.Message);
         }
     }
 
