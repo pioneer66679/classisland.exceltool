@@ -147,4 +147,11 @@ dotnet build -c Release
 
 ## 许可
 
-未指定。作者：aaa人機課長。
+[MIT License](LICENSE) © 2026 aaa人機課長
+
+可以自由使用、修改、再分发（包括商业用途），只需保留版权声明。
+
+> 关于依赖：本插件引用 [ClassIsland.PluginSdk](https://www.nuget.org/packages/ClassIsland.PluginSdk)
+> （`LGPL-3.0-only`）且设置 `ExcludeAssets="runtime"`，不随插件分发 SDK 程序集，
+> 因此插件本身不受其传染性条款约束。
+> Excel 读写使用 [ClosedXML](https://www.nuget.org/packages/ClosedXML)（MIT），可随插件分发。
