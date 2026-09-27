@@ -32,6 +32,8 @@
     <None Update="manifest.yml" CopyToOutputDirectory="PreserveNewest" />
     <None Update="icon.png" CopyToOutputDirectory="PreserveNewest" Condition="Exists('icon.png')" />
     <None Update="README.md" CopyToOutputDirectory="PreserveNewest" Condition="Exists('README.md')" />
+    <!-- README 里引用的截图，一并拷进输出目录，否则装到 ClassIsland 里看说明会图挂 -->
+    <None Update="images\**\*" CopyToOutputDirectory="PreserveNewest" Condition="Exists('images')" />
   </ItemGroup>
 
 </Project>
