@@ -131,6 +131,18 @@ public sealed class ExcelToolConfig
     /// <summary>导出时是否写入表头样式（加粗+冻结首行）。</summary>
     public bool StyleHeader { get; set; } = true;
 
+    /// <summary>
+    /// 是否在导出结果里写入 ID 列（时间表ID / 科目ID / 课表ID 等）。
+    ///
+    /// 默认 false：这些 ID 是 ClassIsland 档案内部的 GUID 主键（36 位乱码），
+    /// 对人眼核对毫无帮助，且每行都要重复一遍，会把表格糊满。
+    /// 导入时按「名称」匹配即可，不依赖这些 ID（见 ImportEngine 的分组逻辑）。
+    ///
+    /// 打开后 ID 会写成「隐藏列」，排在所有可见列的右边 —— 需要精确定位时展开看一眼，
+    /// 平时不影响阅读，也不会被误改。
+    /// </summary>
+    public bool ShowIdColumns { get; set; } = false;
+
     /// <summary>导入时是否跳过空行。</summary>
     public bool SkipEmptyRows { get; set; } = true;
 

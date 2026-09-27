@@ -110,27 +110,32 @@ public static class ExcelEngine
     /// <param name="settingsJson">Settings.json 的内容</param>
     /// <param name="enabledSheets">要包含的 Sheet</param>
     /// <param name="styleHeader">是否加表头样式</param>
+    /// <param name="showIds">
+    /// 是否写入 ID 列。默认 false —— 那些 GUID 是档案内部主键，导入时按名称匹配即可，
+    /// 写出来只会把表格糊满乱码。打开后 ID 会作为「隐藏列」排在所有可见列右边。
+    /// </param>
     /// <returns>写好的 XLWorkbook</returns>
     public static XLWorkbook BuildWorkbook(
         JsonNode profileJson,
         JsonNode settingsJson,
         IEnumerable<string> enabledSheets,
-        bool styleHeader = true)
+        bool styleHeader = true,
+        bool showIds = false)
     {
         var wb = new XLWorkbook();
         var on = new HashSet<string>(enabledSheets, StringComparer.Ordinal);
 
         if (on.Contains(SheetNames.TimeLayouts))
-            WriteTimeLayouts(wb.Worksheets.Add(SheetNames.TimeLayouts), profileJson);
+            WriteTimeLayouts(wb.Worksheets.Add(SheetNames.TimeLayouts), profileJson, showIds);
 
         if (on.Contains(SheetNames.Subjects))
-            WriteSubjects(wb.Worksheets.Add(SheetNames.Subjects), profileJson);
+            WriteSubjects(wb.Worksheets.Add(SheetNames.Subjects), profileJson, showIds);
 
         if (on.Contains(SheetNames.ClassPlans))
-            WriteClassPlans(wb.Worksheets.Add(SheetNames.ClassPlans), profileJson);
+            WriteClassPlans(wb.Worksheets.Add(SheetNames.ClassPlans), profileJson, showIds);
 
         if (on.Contains(SheetNames.ClassPlanMeta))
-            WriteClassPlanMeta(wb.Worksheets.Add(SheetNames.ClassPlanMeta), profileJson);
+            WriteClassPlanMeta(wb.Worksheets.Add(SheetNames.ClassPlanMeta), profileJson, showIds);
 
         if (on.Contains(SheetNames.Settings))
             WriteSettings(wb.Worksheets.Add(SheetNames.Settings), settingsJson);
@@ -149,16 +154,22 @@ public static class ExcelEngine
         return wb;
     }
 
-    private static void WriteTimeLayouts(IXLWorksheet ws, JsonNode profile)
+    private static void WriteTimeLayouts(IXLWorksheet ws, JsonNode profile, bool showIds)
     {
-        // 表头
+        // 可见列：ID 一律不放在这里 —— 它们多是 36 位 GUID，且每行重复，只会糊满表格。
+        // 导入主路径走「原始行(JSON)」，这些字段在 JSON 里本来就是全的，所以移走不影响往返。
         string[] cols =
         {
-            "时间表名称", "时间表ID", "是否叠放", "叠放源ID", "是否启用",
+            "时间表名称", "是否叠放", "是否启用",
             "行号", "开始时间", "结束时间", "时长(秒)", "类型",
-            "隐藏默认", "默认课程ID", "课间名称", "结束秒", "附加对象(JSON)", "行动集(JSON)", "原始行(JSON)"
+            "隐藏默认", "课间名称", "结束秒", "附加对象(JSON)", "行动集(JSON)", "原始行(JSON)"
         };
         for (var i = 0; i < cols.Length; i++) ws.Cell(1, i + 1).Value = cols[i];
+
+        // 隐藏列（仅在 showIds 时写入）：时间表ID、叠放源ID、默认课程ID
+        const int C_ID = 15;          // 紧邻可见列之后
+        const int C_OVERLAY_SRC = 16;
+        const int C_DEFAULT_CLASS = 17;
 
         var layouts = profile["TimeLayouts"] as JsonObject;
         if (layouts is null) return;
@@ -184,10 +195,13 @@ public static class ExcelEngine
             {
                 // 空时间表也要占一行，导入时才知道它存在
                 ws.Cell(r, 1).Value = tlName;
-                ws.Cell(r, 2).Value = tlId;
-                ws.Cell(r, 3).Value = EncodeValue(isOverlay);
-                ws.Cell(r, 4).Value = EncodeValue(overlaySrc);
-                ws.Cell(r, 5).Value = EncodeValue(isActive);
+                ws.Cell(r, 2).Value = EncodeValue(isOverlay);
+                ws.Cell(r, 3).Value = EncodeValue(isActive);
+                if (showIds)
+                {
+                    ws.Cell(r, C_ID).Value = tlId;
+                    ws.Cell(r, C_OVERLAY_SRC).Value = EncodeValue(overlaySrc);
+                }
                 r++;
                 continue;
             }
@@ -196,34 +210,60 @@ public static class ExcelEngine
             {
                 var it = item as JsonObject;
                 ws.Cell(r, 1).Value = tlName;
-                ws.Cell(r, 2).Value = tlId;
-                ws.Cell(r, 3).Value = EncodeValue(isOverlay);
-                ws.Cell(r, 4).Value = EncodeValue(overlaySrc);
-                ws.Cell(r, 5).Value = EncodeValue(isActive);
+                ws.Cell(r, 2).Value = EncodeValue(isOverlay);
+                ws.Cell(r, 3).Value = EncodeValue(isActive);
 
-                ws.Cell(r, 6).Value = idx;
-                ws.Cell(r, 7).Value = it?["StartTime"]?.GetValue<string>() ?? "";
-                ws.Cell(r, 8).Value = it?["EndTime"]?.GetValue<string>() ?? "";
-                ws.Cell(r, 9).Value = it?["Last"]?.GetValue<string>() ?? "";
-                ws.Cell(r, 10).Value = EncodeValue(it?["TimeType"]);
-                ws.Cell(r, 11).Value = EncodeValue(it?["IsHideDefault"]);
-                ws.Cell(r, 12).Value = EncodeValue(it?["DefaultClassId"]);
-                ws.Cell(r, 13).Value = it?["BreakName"]?.GetValue<string>() ?? "";
-                ws.Cell(r, 14).Value = it?["EndSecond"]?.GetValue<string>() ?? "";
-                ws.Cell(r, 15).Value = EncodeValue(it?["AttachedObjects"]);
-                ws.Cell(r, 16).Value = EncodeValue(it?["ActionSet"]);
-                ws.Cell(r, 17).Value = it is null ? "" : JsonPrefix + it.ToJsonString();
+                ws.Cell(r, 4).Value = idx;
+                ws.Cell(r, 5).Value = it?["StartTime"]?.GetValue<string>() ?? "";
+                ws.Cell(r, 6).Value = it?["EndTime"]?.GetValue<string>() ?? "";
+                ws.Cell(r, 7).Value = it?["Last"]?.GetValue<string>() ?? "";
+                ws.Cell(r, 8).Value = EncodeValue(it?["TimeType"]);
+                ws.Cell(r, 9).Value = EncodeValue(it?["IsHideDefault"]);
+                ws.Cell(r, 10).Value = it?["BreakName"]?.GetValue<string>() ?? "";
+                ws.Cell(r, 11).Value = it?["EndSecond"]?.GetValue<string>() ?? "";
+                ws.Cell(r, 12).Value = EncodeValue(it?["AttachedObjects"]);
+                ws.Cell(r, 13).Value = EncodeValue(it?["ActionSet"]);
+                ws.Cell(r, 14).Value = it is null ? "" : JsonPrefix + it.ToJsonString();
+
+                if (showIds)
+                {
+                    ws.Cell(r, C_ID).Value = tlId;
+                    ws.Cell(r, C_OVERLAY_SRC).Value = EncodeValue(overlaySrc);
+                    ws.Cell(r, C_DEFAULT_CLASS).Value = EncodeValue(it?["DefaultClassId"]);
+                }
 
                 r++;
                 idx++;
             }
         }
+
+        if (showIds)
+        {
+            ws.Cell(1, C_ID).Value = "时间表ID";
+            ws.Cell(1, C_OVERLAY_SRC).Value = "叠放源ID";
+            ws.Cell(1, C_DEFAULT_CLASS).Value = "默认课程ID";
+            HideIdColumn(ws, C_ID);
+            HideIdColumn(ws, C_OVERLAY_SRC);
+            HideIdColumn(ws, C_DEFAULT_CLASS);
+        }
     }
 
-    private static void WriteSubjects(IXLWorksheet ws, JsonNode profile)
+    /// <summary>把 ID 列整列隐藏并做视觉弱化（灰色表头），避免误导主人去编辑。</summary>
+    private static void HideIdColumn(IXLWorksheet ws, int col)
     {
-        string[] cols = { "科目ID", "名称", "简称", "教师", "是否室外" };
+        try { ws.Column(col).Hide(); } catch { /* 某些写出器可能不支持，忽略 */ }
+        ws.Cell(1, col).Style.Font.Bold = true;
+        ws.Cell(1, col).Style.Font.FontColor = XLColor.FromHtml("#888888");
+        ws.Cell(1, col).Style.Fill.BackgroundColor = XLColor.FromHtml("#EFEFEF");
+    }
+
+    private static void WriteSubjects(IXLWorksheet ws, JsonNode profile, bool showIds)
+    {
+        // 可见列只有 4 个，ID 挪到隐藏列
+        string[] cols = { "名称", "简称", "教师", "是否室外" };
         for (var i = 0; i < cols.Length; i++) ws.Cell(1, i + 1).Value = cols[i];
+
+        const int C_ID = 5;
 
         var subjects = profile["Subjects"] as JsonObject;
         if (subjects is null) return;
@@ -232,23 +272,34 @@ public static class ExcelEngine
         foreach (var kv in subjects)
         {
             var s = kv.Value as JsonObject;
-            ws.Cell(r, 1).Value = kv.Key;
-            ws.Cell(r, 2).Value = s?["Name"]?.GetValue<string>() ?? "";
-            ws.Cell(r, 3).Value = s?["Initial"]?.GetValue<string>() ?? "";
-            ws.Cell(r, 4).Value = s?["TeacherName"]?.GetValue<string>() ?? "";
-            ws.Cell(r, 5).Value = EncodeValue(s?["IsOutDoor"]);
+            ws.Cell(r, 1).Value = s?["Name"]?.GetValue<string>() ?? "";
+            ws.Cell(r, 2).Value = s?["Initial"]?.GetValue<string>() ?? "";
+            ws.Cell(r, 3).Value = s?["TeacherName"]?.GetValue<string>() ?? "";
+            ws.Cell(r, 4).Value = EncodeValue(s?["IsOutDoor"]);
+            if (showIds) ws.Cell(r, C_ID).Value = kv.Key;
             r++;
+        }
+
+        if (showIds)
+        {
+            ws.Cell(1, C_ID).Value = "科目ID";
+            HideIdColumn(ws, C_ID);
         }
     }
 
-    private static void WriteClassPlans(IXLWorksheet ws, JsonNode profile)
+    private static void WriteClassPlans(IXLWorksheet ws, JsonNode profile, bool showIds)
     {
+        // 可见列：课表名 / 科目名 在前，方便直接看；ID 全部挪到隐藏列
         string[] cols =
         {
-            "课表名称", "课表ID", "时间表ID", "是否叠放", "行号",
-            "索引", "科目ID", "科目名", "是否启用", "是否换课", "原始行(JSON)"
+            "课表名称", "科目名", "索引", "是否启用",
+            "是否换课", "是否叠放", "行号", "原始行(JSON)"
         };
         for (var i = 0; i < cols.Length; i++) ws.Cell(1, i + 1).Value = cols[i];
+
+        const int C_CP_ID = 9;      // 课表ID
+        const int C_TL_ID = 10;     // 时间表ID
+        const int C_SUB_ID = 11;    // 科目ID
 
         var plans = profile["ClassPlans"] as JsonObject;
         if (plans is null) return;
@@ -269,9 +320,12 @@ public static class ExcelEngine
             if (classes is null || classes.Count == 0)
             {
                 ws.Cell(r, 1).Value = cpName;
-                ws.Cell(r, 2).Value = kv.Key;
-                ws.Cell(r, 3).Value = tlId;
-                ws.Cell(r, 4).Value = EncodeValue(isOverlay);
+                ws.Cell(r, 6).Value = EncodeValue(isOverlay);
+                if (showIds)
+                {
+                    ws.Cell(r, C_CP_ID).Value = kv.Key;
+                    ws.Cell(r, C_TL_ID).Value = tlId;
+                }
                 r++;
                 continue;
             }
@@ -283,19 +337,34 @@ public static class ExcelEngine
                 var subId = ci?["SubjectId"]?.GetValue<string>() ?? "";
 
                 ws.Cell(r, 1).Value = cpName;
-                ws.Cell(r, 2).Value = kv.Key;
-                ws.Cell(r, 3).Value = tlId;
-                ws.Cell(r, 4).Value = EncodeValue(isOverlay);
-                ws.Cell(r, 5).Value = idx;
-                ws.Cell(r, 6).Value = EncodeValue(ci?["Index"]);
-                ws.Cell(r, 7).Value = subId;
-                ws.Cell(r, 8).Value = LookupSubjectName(subjects, subId);
-                ws.Cell(r, 9).Value = EncodeValue(ci?["IsEnabled"]);
-                ws.Cell(r, 10).Value = EncodeValue(ci?["IsChangedClass"]);
-                ws.Cell(r, 11).Value = ci is null ? "" : JsonPrefix + ci.ToJsonString();
+                ws.Cell(r, 2).Value = LookupSubjectName(subjects, subId);
+                ws.Cell(r, 3).Value = EncodeValue(ci?["Index"]);
+                ws.Cell(r, 4).Value = EncodeValue(ci?["IsEnabled"]);
+                ws.Cell(r, 5).Value = EncodeValue(ci?["IsChangedClass"]);
+                ws.Cell(r, 6).Value = EncodeValue(isOverlay);
+                ws.Cell(r, 7).Value = idx;
+                ws.Cell(r, 8).Value = ci is null ? "" : JsonPrefix + ci.ToJsonString();
+
+                if (showIds)
+                {
+                    ws.Cell(r, C_CP_ID).Value = kv.Key;
+                    ws.Cell(r, C_TL_ID).Value = tlId;
+                    ws.Cell(r, C_SUB_ID).Value = subId;
+                }
+
                 r++;
                 idx++;
             }
+        }
+
+        if (showIds)
+        {
+            ws.Cell(1, C_CP_ID).Value = "课表ID";
+            ws.Cell(1, C_TL_ID).Value = "时间表ID";
+            ws.Cell(1, C_SUB_ID).Value = "科目ID";
+            HideIdColumn(ws, C_CP_ID);
+            HideIdColumn(ws, C_TL_ID);
+            HideIdColumn(ws, C_SUB_ID);
         }
     }
 
@@ -307,14 +376,19 @@ public static class ExcelEngine
         return "";
     }
 
-    private static void WriteClassPlanMeta(IXLWorksheet ws, JsonNode profile)
+    private static void WriteClassPlanMeta(IXLWorksheet ws, JsonNode profile, bool showIds)
     {
+        // 可见列：全是人能看懂的东西；「关联分组」实际是 GUID，移到隐藏区
         string[] cols =
         {
-            "课表ID", "名称", "时间表ID", "时间表名称", "是否启用", "是否叠放",
-            "叠放源ID", "关联分组", "课时数", "原始行(JSON)"
+            "名称", "时间表名称", "是否启用", "是否叠放", "课时数", "原始行(JSON)"
         };
         for (var i = 0; i < cols.Length; i++) ws.Cell(1, i + 1).Value = cols[i];
+
+        const int C_CP_ID = 7;        // 课表ID
+        const int C_TL_ID = 8;        // 时间表ID
+        const int C_OVERLAY_SRC = 9;  // 叠放源ID
+        const int C_GROUP = 10;       // 关联分组（实际是 GUID）
 
         var plans = profile["ClassPlans"] as JsonObject;
         var layouts = profile["TimeLayouts"] as JsonObject;
@@ -333,17 +407,33 @@ public static class ExcelEngine
 
             var count = (cp["Classes"] as JsonArray)?.Count ?? 0;
 
-            ws.Cell(r, 1).Value = kv.Key;
-            ws.Cell(r, 2).Value = cp["Name"]?.GetValue<string>() ?? "";
-            ws.Cell(r, 3).Value = tlId;
-            ws.Cell(r, 4).Value = tlName;
-            ws.Cell(r, 5).Value = EncodeValue(cp["IsEnabled"]);
-            ws.Cell(r, 6).Value = EncodeValue(cp["IsOverlay"]);
-            ws.Cell(r, 7).Value = EncodeValue(cp["OverlaySourceId"]);
-            ws.Cell(r, 8).Value = EncodeValue(cp["AssociatedGroup"]);
-            ws.Cell(r, 9).Value = count;
-            ws.Cell(r, 10).Value = JsonPrefix + cp.ToJsonString();
+            ws.Cell(r, 1).Value = cp["Name"]?.GetValue<string>() ?? "";
+            ws.Cell(r, 2).Value = tlName;
+            ws.Cell(r, 3).Value = EncodeValue(cp["IsEnabled"]);
+            ws.Cell(r, 4).Value = EncodeValue(cp["IsOverlay"]);
+            ws.Cell(r, 5).Value = count;
+            ws.Cell(r, 6).Value = JsonPrefix + cp.ToJsonString();
+
+            if (showIds)
+            {
+                ws.Cell(r, C_CP_ID).Value = kv.Key;
+                ws.Cell(r, C_TL_ID).Value = tlId;
+                ws.Cell(r, C_OVERLAY_SRC).Value = EncodeValue(cp["OverlaySourceId"]);
+                ws.Cell(r, C_GROUP).Value = EncodeValue(cp["AssociatedGroup"]);
+            }
             r++;
+        }
+
+        if (showIds)
+        {
+            ws.Cell(1, C_CP_ID).Value = "课表ID";
+            ws.Cell(1, C_TL_ID).Value = "时间表ID";
+            ws.Cell(1, C_OVERLAY_SRC).Value = "叠放源ID";
+            ws.Cell(1, C_GROUP).Value = "关联分组";
+            HideIdColumn(ws, C_CP_ID);
+            HideIdColumn(ws, C_TL_ID);
+            HideIdColumn(ws, C_OVERLAY_SRC);
+            HideIdColumn(ws, C_GROUP);
         }
     }
 

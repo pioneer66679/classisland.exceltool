@@ -34,6 +34,7 @@ public class ExcelToolSettingsPage : SettingsPageBase
     private readonly TextBox _backupBox = new() { Watermark = "留空则用插件配置目录\\Backups" };
     private readonly CheckBox _autoBackup = new() { Content = "导入前自动备份档案（建议开启）" };
     private readonly CheckBox _styleHeader = new() { Content = "导出时加表头样式并冻结首行" };
+    private readonly CheckBox _showIds = new() { Content = "导出隐藏的 ID 列（默认不导出）" };
     private readonly CheckBox _skipEmpty = new() { Content = "导入时跳过空行" };
     private readonly ComboBox _strategyBox = new() { Width = 220 };
     private readonly Dictionary<string, CheckBox> _sheetBoxes = new();
@@ -113,6 +114,7 @@ public class ExcelToolSettingsPage : SettingsPageBase
         }
         panel.Children.Add(sheetRow);
         panel.Children.Add(_styleHeader);
+        panel.Children.Add(_showIds);
 
         panel.Children.Add(Header("导入"));
         panel.Children.Add(Hint("点「预览差异」或「应用导入」都会先弹出文件选择框，路径可留空。"));
@@ -212,6 +214,7 @@ public class ExcelToolSettingsPage : SettingsPageBase
         _backupBox.Text = _config.BackupFolder;
         _autoBackup.IsChecked = _config.AutoBackupBeforeImport;
         _styleHeader.IsChecked = _config.StyleHeader;
+        _showIds.IsChecked = _config.ShowIdColumns;
         _skipEmpty.IsChecked = _config.SkipEmptyRows;
         _strategyBox.SelectedIndex = _config.DefaultStrategy switch
         {
@@ -231,6 +234,7 @@ public class ExcelToolSettingsPage : SettingsPageBase
         _config.BackupFolder = _backupBox.Text ?? "";
         _config.AutoBackupBeforeImport = _autoBackup.IsChecked == true;
         _config.StyleHeader = _styleHeader.IsChecked == true;
+        _config.ShowIdColumns = _showIds.IsChecked == true;
         _config.SkipEmptyRows = _skipEmpty.IsChecked == true;
         _config.DefaultStrategy = _strategyBox.SelectedIndex switch
         {
@@ -436,7 +440,7 @@ public class ExcelToolSettingsPage : SettingsPageBase
             var profile = _profileStore.LoadProfile();
             var settings = _profileStore.LoadSettings();
 
-            using var wb = ExcelEngine.BuildWorkbook(profile, settings, _config.EnabledSheets, _config.StyleHeader);
+            using var wb = ExcelEngine.BuildWorkbook(profile, settings, _config.EnabledSheets, _config.StyleHeader, _config.ShowIdColumns);
 
             var dir = Path.GetDirectoryName(path);
             if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
