@@ -95,4 +95,4 @@ dotnet build -c Release
 
 ## 许可
 
-未指定。作者：鲸娘。
+未指定。作者：aaa人機課長。
