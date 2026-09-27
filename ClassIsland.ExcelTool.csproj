@@ -27,10 +27,11 @@
     <PackageReference Include="ClosedXML" Version="0.104.2" />
   </ItemGroup>
 
-  <!-- 插件清单与图标进输出目录 -->
+  <!-- 插件清单、图标与说明文档进输出目录（manifest.yml 里的 readme/icon 字段需要它们） -->
   <ItemGroup>
     <None Update="manifest.yml" CopyToOutputDirectory="PreserveNewest" />
     <None Update="icon.png" CopyToOutputDirectory="PreserveNewest" Condition="Exists('icon.png')" />
+    <None Update="README.md" CopyToOutputDirectory="PreserveNewest" Condition="Exists('README.md')" />
   </ItemGroup>
 
 </Project>
