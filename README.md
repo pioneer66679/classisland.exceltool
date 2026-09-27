@@ -66,7 +66,7 @@
 ## 从源码编译
 
 ```powershell
-git clone <本仓库地址>
+git clone https://github.com/你的用户名/ClassIsland.ExcelTool.git
 cd ClassIsland.ExcelTool
 dotnet build -c Release
 ```
