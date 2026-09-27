@@ -156,20 +156,23 @@ public static class ExcelEngine
 
     private static void WriteTimeLayouts(IXLWorksheet ws, JsonNode profile, bool showIds)
     {
-        // 可见列：ID 一律不放在这里 —— 它们多是 36 位 GUID，且每行重复，只会糊满表格。
-        // 导入主路径走「原始行(JSON)」，这些字段在 JSON 里本来就是全的，所以移走不影响往返。
+        // 可见列：只留人看得懂的内容。
+        //   - ID 是 36 位 GUID，且每行重复，只会糊满表格；
+        //   - 「原始行(JSON)」是导入用的机械载荷，人不需要读。
+        // 两者都放到右侧隐藏列：导入按表头名找列，隐藏不影响读取。
         string[] cols =
         {
             "时间表名称", "是否叠放", "是否启用",
             "行号", "开始时间", "结束时间", "时长(秒)", "类型",
-            "隐藏默认", "课间名称", "结束秒", "附加对象(JSON)", "行动集(JSON)", "原始行(JSON)"
+            "隐藏默认", "课间名称", "结束秒", "附加对象(JSON)", "行动集(JSON)"
         };
         for (var i = 0; i < cols.Length; i++) ws.Cell(1, i + 1).Value = cols[i];
 
-        // 隐藏列（仅在 showIds 时写入）：时间表ID、叠放源ID、默认课程ID
-        const int C_ID = 15;          // 紧邻可见列之后
-        const int C_OVERLAY_SRC = 16;
-        const int C_DEFAULT_CLASS = 17;
+        // 隐藏列：原始行永远写；ID 三列仅在 showIds 时写
+        const int C_RAW = 14;            // 原始行(JSON)
+        const int C_ID = 15;             // 时间表ID
+        const int C_OVERLAY_SRC = 16;    // 叠放源ID
+        const int C_DEFAULT_CLASS = 17;  // 默认课程ID
 
         var layouts = profile["TimeLayouts"] as JsonObject;
         if (layouts is null) return;
@@ -223,7 +226,9 @@ public static class ExcelEngine
                 ws.Cell(r, 11).Value = it?["EndSecond"]?.GetValue<string>() ?? "";
                 ws.Cell(r, 12).Value = EncodeValue(it?["AttachedObjects"]);
                 ws.Cell(r, 13).Value = EncodeValue(it?["ActionSet"]);
-                ws.Cell(r, 14).Value = it is null ? "" : JsonPrefix + it.ToJsonString();
+
+                // 原始行：导入的主路径载荷，永远写入但放在隐藏列
+                ws.Cell(r, C_RAW).Value = it is null ? "" : JsonPrefix + it.ToJsonString();
 
                 if (showIds)
                 {
@@ -236,6 +241,10 @@ public static class ExcelEngine
                 idx++;
             }
         }
+
+        // 原始行列：永远存在，隐藏
+        ws.Cell(1, C_RAW).Value = "原始行(JSON)";
+        HideIdColumn(ws, C_RAW);
 
         if (showIds)
         {
@@ -289,14 +298,15 @@ public static class ExcelEngine
 
     private static void WriteClassPlans(IXLWorksheet ws, JsonNode profile, bool showIds)
     {
-        // 可见列：课表名 / 科目名 在前，方便直接看；ID 全部挪到隐藏列
+        // 可见列：课表名 / 科目名 在前，方便直接看；ID 与原始行都挪到隐藏列
         string[] cols =
         {
             "课表名称", "科目名", "索引", "是否启用",
-            "是否换课", "是否叠放", "行号", "原始行(JSON)"
+            "是否换课", "是否叠放", "行号"
         };
         for (var i = 0; i < cols.Length; i++) ws.Cell(1, i + 1).Value = cols[i];
 
+        const int C_RAW = 8;        // 原始行(JSON)
         const int C_CP_ID = 9;      // 课表ID
         const int C_TL_ID = 10;     // 时间表ID
         const int C_SUB_ID = 11;    // 科目ID
@@ -343,7 +353,7 @@ public static class ExcelEngine
                 ws.Cell(r, 5).Value = EncodeValue(ci?["IsChangedClass"]);
                 ws.Cell(r, 6).Value = EncodeValue(isOverlay);
                 ws.Cell(r, 7).Value = idx;
-                ws.Cell(r, 8).Value = ci is null ? "" : JsonPrefix + ci.ToJsonString();
+                ws.Cell(r, C_RAW).Value = ci is null ? "" : JsonPrefix + ci.ToJsonString();
 
                 if (showIds)
                 {
@@ -356,6 +366,10 @@ public static class ExcelEngine
                 idx++;
             }
         }
+
+        // 原始行列：永远存在，隐藏
+        ws.Cell(1, C_RAW).Value = "原始行(JSON)";
+        HideIdColumn(ws, C_RAW);
 
         if (showIds)
         {
@@ -378,13 +392,14 @@ public static class ExcelEngine
 
     private static void WriteClassPlanMeta(IXLWorksheet ws, JsonNode profile, bool showIds)
     {
-        // 可见列：全是人能看懂的东西；「关联分组」实际是 GUID，移到隐藏区
+        // 可见列：全是人能看懂的东西；「关联分组」实际是 GUID，原始行是机械载荷，都移到隐藏区
         string[] cols =
         {
-            "名称", "时间表名称", "是否启用", "是否叠放", "课时数", "原始行(JSON)"
+            "名称", "时间表名称", "是否启用", "是否叠放", "课时数"
         };
         for (var i = 0; i < cols.Length; i++) ws.Cell(1, i + 1).Value = cols[i];
 
+        const int C_RAW = 6;          // 原始行(JSON)
         const int C_CP_ID = 7;        // 课表ID
         const int C_TL_ID = 8;        // 时间表ID
         const int C_OVERLAY_SRC = 9;  // 叠放源ID
@@ -412,7 +427,7 @@ public static class ExcelEngine
             ws.Cell(r, 3).Value = EncodeValue(cp["IsEnabled"]);
             ws.Cell(r, 4).Value = EncodeValue(cp["IsOverlay"]);
             ws.Cell(r, 5).Value = count;
-            ws.Cell(r, 6).Value = JsonPrefix + cp.ToJsonString();
+            ws.Cell(r, C_RAW).Value = JsonPrefix + cp.ToJsonString();
 
             if (showIds)
             {
@@ -423,6 +438,10 @@ public static class ExcelEngine
             }
             r++;
         }
+
+        // 原始行列：永远存在，隐藏
+        ws.Cell(1, C_RAW).Value = "原始行(JSON)";
+        HideIdColumn(ws, C_RAW);
 
         if (showIds)
         {
