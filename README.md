@@ -186,11 +186,20 @@ dotnet build -c Release
 
 ## 许可
 
-[MIT License](LICENSE) © 2026 aaa人機課長
+[GNU General Public License v3.0](LICENSE) © 2026 aaa人機課長
 
-可以自由使用、修改、再分发（包括商业用途），只需保留版权声明。
+你可以自由使用、修改、分发本插件，但**衍生作品必须以同样的 GPL-3.0 协议开源**。
 
-> 关于依赖：本插件引用 [ClassIsland.PluginSdk](https://www.nuget.org/packages/ClassIsland.PluginSdk)
-> （`LGPL-3.0-only`）且设置 `ExcludeAssets="runtime"`，不随插件分发 SDK 程序集，
-> 因此插件本身不受其传染性条款约束。
-> Excel 读写使用 [ClosedXML](https://www.nuget.org/packages/ClosedXML)（MIT），可随插件分发。
+> 这个选择与 ClassIsland 本体保持一致 —— ClassIsland 从 1.6 起改用 GPLv3
+> （见 [Discussion #697](https://github.com/ClassIsland/ClassIsland/discussions/697)）。
+
+### 关于依赖
+
+- [ClassIsland.PluginSdk](https://www.nuget.org/packages/ClassIsland.PluginSdk)：`LGPL-3.0-only`。
+  本插件以 `PrivateAssets=all` + `ExcludeAssets="runtime"` 引用，**不随插件分发 SDK 程序集**。
+- [ClosedXML](https://www.nuget.org/packages/ClosedXML)：MIT，可随插件分发。
+
+### 历史版本
+
+v1.0.4 及更早的版本以 **MIT** 许可发布。已发布的许可不可撤销，
+拿到旧版的人仍可继续按 MIT 使用那些版本。
